@@ -1,0 +1,183 @@
+---
+title: "Practical Machine Learning Project"
+author: "Manoj Prasad"
+output:
+  html_document:
+    fig_height: 8
+    fig_width: 14
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+### <u><b> Overview </u></b>
+ - This document serves as a Project report for the coursera course Practical Machine Learning
+ - The goal is to explore data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants
+ - The "classe" variable from the dataset needs to be predicted for the provided Test Dataset
+ - Different models would be trained against the provided training dataset and the most accurate model would be used to test against the test dataset
+
+### <u><b> Environment Setup </u></b>
+  - Lets load the required packages and set the seed for predictions
+      
+    ```{r environment_setup}
+    library(knitr)
+    library(caret)
+    library(rpart)
+    library(rpart.plot)
+    library(rattle)
+    library(randomForest)
+    library(corrplot)
+    set.seed(12345)
+    ```
+
+### <u><b> Loading the Dataset </u></b>
+* <u><b> Training Dataset </u></b>
+    - Lets load the training dataset
+
+    ```{r load_train_dataset}
+    trainingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+    trainingDataset <- read.csv(url(trainingUrl))
+    ```
+
+* <u><b> Testing Dataset </u></b>
+    - Lets load the testing dataset
+
+    ```{r load_test_dataset}
+    testingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+    testingDataset <- read.csv(url(testingUrl))
+    ```
+
+### <u><b> Tidying/Cleaning the Dataset </u></b>
+* <u><b> Dimensions </u></b>
+    - Lets look at the dimensions of the raw testing and training datasets
+    
+    ```{r dataset_dimensions}
+    dim(trainingDataset)
+    dim(testingDataset)
+    ```
+
+* <u><b> Remove variables with Near Zero Variance (NZV) </u></b>
+    - Lets remove variables having NZV on trainingDataset
+    
+    ```{r remove_nzv}
+    nzv <- nearZeroVar(trainingDataset)
+    trainingDataset <- trainingDataset[, -nzv]
+    dim(trainingDataset)
+    ```
+
+* <u><b> Remove variables which are mostly NA </u></b>
+    - Lets remove variables from trainingDataset having mostly NA values
+    
+    ```{r remove_na}
+    allNA <- sapply(trainingDataset, function(x) mean(is.na(x))) > 0.95
+    trainingDataset <- trainingDataset[, allNA == FALSE]
+    dim(trainingDataset)
+    ```
+
+* <u><b> Remove variables not useful for prediction </u></b>
+    - From the further inpsection into trainingDataset, seems like the first 5 columns are related to timestamps and username and can be removed since those are not useful for predictions
+    
+    ```{r remove_5_columns}
+    trainingDataset <- trainingDataset[, -(1:5)]
+    dim(trainingDataset)
+    ```
+
+* <u><b> Training Dataset Partitioning </u></b>
+    - Lets now partition the training dataset further into training and testing
+    - Let 70% of the data be used for training and the rest 30% used for testing
+    
+    ```{r dataset_partitioning}
+    inTrain <- createDataPartition(y = trainingDataset$classe, p = 0.7, list = FALSE)
+    training <- trainingDataset[inTrain, ]
+    testing <- trainingDataset[-inTrain, ]
+    
+    dim(training)
+    dim(testing)
+    ```
+    
+### <u><b> Prediction via Models </u></b>
+ - Lets try "Random Forests", "Decision Tree", "Generalized Boosted" Models to predict the classe variable
+ - Confusion Matrix would be plotted for each of the model to understand the accuracy of the models
+ - The most accurate model would be used to predict classe variable on "Testing" dataset
+
+##### <u><b> Random Forests </u></b>
+* <u><b> Training the Model </u></b>
+```{r rf_training}
+    set.seed(12345)
+    control <- trainControl(method = "cv", number = 3, verboseIter = FALSE)
+    rfModel <- train(classe ~ ., data = training, method = "rf", trControl = control)
+    rfModel$finalModel
+```
+
+* <u><b> Prediction on Test Dataset </u></b>
+```{r rf_predict_testing}
+    rfTestPrediction <- predict(rfModel, newdata = testing)
+    rfConfusionMatrix <- confusionMatrix(rfTestPrediction, testing$classe)
+    print(rfConfusionMatrix)
+```
+
+* <u><b> Model Accuracy Plot </u></b>
+```{r rf_accuracy_plot}
+    plot(rfConfusionMatrix$table, col = rfConfusionMatrix$byClass, 
+         main = paste("Random Forest Model - Accuracy = ",
+                      round(rfConfusionMatrix$overall['Accuracy'], 4)))
+```
+
+##### <u><b> Decision Tree </u></b>
+* <u><b> Training the Model </u></b>
+```{r dt_training}
+    set.seed(12345)
+    dtModel <- rpart(classe ~ ., data = training, method = "class")
+    fancyRpartPlot(dtModel)
+```
+
+* <u><b> Prediction on Test Dataset </u></b>
+```{r dt_predict_testing}
+    dtTestPrediction <- predict(dtModel, newdata = testing, type = "class")
+    dtConfusionMatrix <- confusionMatrix(dtTestPrediction, testing$classe)
+    print(dtConfusionMatrix)
+```
+* <u><b> Model Accuracy </u></b>
+```{r dt_accuracy_plot}
+    plot(dtConfusionMatrix$table, col = dtConfusionMatrix$byClass,
+         main = paste("Decision Tree Model - Accuracy = ",
+                      round(dtConfusionMatrix$overall['Accuracy'], 4)))
+```
+
+##### <u><b> Generalized Boosted </u></b>
+* <u><b> Training the Model </u></b>
+```{r gbm_training}
+    set.seed(12345)
+    control <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+    gbModel  <- train(classe ~ ., data = training, method = "gbm",
+                        trControl = control, verbose = FALSE)
+    print(gbModel$finalModel)
+```
+
+* <u><b> Prediction on Test Dataset </u></b>
+```{r gbm_predict_testing}
+    gbTestPrediction <- predict(gbModel, newdata = testing)
+    gbConfusionMatrix <- confusionMatrix(gbTestPrediction, testing$classe)
+    print(gbConfusionMatrix)
+```
+
+* <u><b> Model Accuracy </u></b>
+```{r gbm_accuracy_plot}
+    plot(gbConfusionMatrix$table, col = gbConfusionMatrix$byClass, 
+         main = paste("Generalized Boosted Model - Accuracy = ", 
+         round(gbConfusionMatrix$overall['Accuracy'], 4)))
+```
+
+### <u><b> Model against Testing Dataset </u></b>
+ - The accuracies of the models tried are as follows
+    * "Random Forests"      : Accuracy = 0.999
+    * "Decision Tree"       : Accuracy = 0.7342
+    * "Generalized Boosted" : Accuracy = 0.9871
+ - "Random Forests" was the most accurate model. Lets execute that against testingDataset to predict the classe variable
+
+```{r predict_testingDataset}
+testPredictions <- predict(rfModel, newdata = testingDataset)
+testPredictions
+```
